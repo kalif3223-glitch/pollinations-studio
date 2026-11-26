@@ -17,18 +17,20 @@ through one API, no SDK, no build step — the script is standard library only.
 ## Setup (once)
 
 ```bash
-export POLLINATIONS_API_KEY=sk_...      # https://enter.pollinations.ai/keys
+python scripts/studio.py login
 ```
 
-On Windows PowerShell:
+That prints a code and the address `https://enter.pollinations.ai/device`, waits
+for the approval, and stores the token in `~/.config/pollinations/credentials.json`
+so every later command works without a key. `logout` removes it.
 
-```powershell
-$env:POLLINATIONS_API_KEY = "sk_..."
+Automation may skip the sign-in and pass a key instead:
+
+```bash
+export POLLINATIONS_API_KEY=sk_...   # optional, overrides the stored token
 ```
 
-Every command also accepts `--key`, but prefer the environment variable so the
-key never lands in shell history.
-
+On Windows PowerShell: `$env:POLLINATIONS_API_KEY = "sk_..."`. Never commit a key.
 ## What to run
 
 ```bash
@@ -95,3 +97,4 @@ out/pack/
 - Prompts leave the machine and are processed by third-party providers. Do not
   send confidential client material, personal data or internal documents.
 - Generated visuals must be reviewed for text artefacts; models invent lettering.
+

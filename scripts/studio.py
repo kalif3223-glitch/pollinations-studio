@@ -30,6 +30,11 @@ import urllib.request
 from pathlib import Path
 
 API = "https://gen.pollinations.ai/v1"
+ISSUER = "https://enter.pollinations.ai"
+# Publishable App Key of this skill. It is a public client id, safe to ship:
+# users sign in to their own account through it, no secret is stored here.
+CLIENT_ID = os.environ.get("POLLINATIONS_CLIENT_ID", "pk_YxXyBK7lNdUC9mYf")
+CREDENTIALS = Path.home() / ".config" / "pollinations" / "credentials.json"
 DEFAULT_TEXT_MODEL = "openai/gpt-5.4-nano"
 DEFAULT_IMAGE_MODEL = "black-forest-labs/flux.1.1-pro"
 DEFAULT_TTS_MODEL = "openai/tts-1"
@@ -46,14 +51,30 @@ class StudioError(RuntimeError):
     pass
 
 
+def stored_token() -> str | None:
+    """Read the token saved by `studio.py login` (sk_...), if any."""
+    try:
+        data = json.loads(CREDENTIALS.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    token = (data.get("access_token") or "").strip()
+    return token or None
+
+
 def api_key(explicit: str | None = None) -> str:
+    """Resolve a key: explicit flag, then environment, then saved sign-in."""
     key = (explicit or os.environ.get("POLLINATIONS_API_KEY") or "").strip()
-    if not key:
-        raise StudioError(
-            "No API key. Set POLLINATIONS_API_KEY (get one at "
-            "https://enter.pollinations.ai/keys) or pass --key."
-        )
-    return key
+    if key:
+        return key
+    token = stored_token()
+    if token:
+        return token
+    raise StudioError(
+        "Not signed in. Run `python scripts/studio.py login` once — it opens "
+        "https://enter.pollinations.ai/device, you approve, and the token is "
+        "stored locally. (For automation you may instead set "
+        "POLLINATIONS_API_KEY or pass --key.)"
+    )
 
 
 def request(method: str, path: str, key: str, payload: dict | None = None,
@@ -111,6 +132,87 @@ def write(path: Path, data: bytes) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
     return path
+
+
+def oauth_post(path: str, payload: dict) -> tuple[int, dict]:
+    """POST to the issuer (device flow lives outside the /v1 API)."""
+    url = f"{ISSUER}{path}"
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=body, method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json",
+                 "User-Agent": USER_AGENT},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return resp.status, json.loads(resp.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", "replace")
+        try:
+            return exc.code, json.loads(raw)
+        except json.JSONDecodeError:
+            return exc.code, {"error": raw[:300]}
+
+
+def cmd_login(args) -> int:
+    if stored_token() and not args.force:
+        print(f"already signed in ({CREDENTIALS}); use --force to sign in again")
+        return 0
+    status, info = oauth_post("/api/device/code",
+                              {"client_id": CLIENT_ID, "scope": "generate profile"})
+    if status != 200 or "device_code" not in info:
+        raise StudioError(f"device flow rejected: {info.get('error_description') or info}")
+    print("To connect your Pollinations account:\n")
+    print(f"  1. open   {info.get('verification_uri')}")
+    print(f"  2. enter  {info.get('user_code')}")
+    print(f"  (or open  {info.get('verification_uri_complete')})\n")
+    print(f"client: {CLIENT_ID}")
+    interval = int(info.get("interval") or 5)
+    deadline = time.time() + int(info.get("expires_in") or 900)
+    print("waiting for approval", end="", flush=True)
+    while time.time() < deadline:
+        time.sleep(interval)
+        print(".", end="", flush=True)
+        status, token = oauth_post("/api/oauth/token", {
+            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            "device_code": info["device_code"],
+            "client_id": CLIENT_ID,
+        })
+        if status == 200 and token.get("access_token"):
+            payload = {
+                "access_token": token["access_token"],
+                "token_type": token.get("token_type", "Bearer"),
+                "scope": token.get("scope", "generate profile"),
+                "client_id": CLIENT_ID,
+                "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            }
+            write(CREDENTIALS, json.dumps(payload, indent=2).encode("utf-8"))
+            try:
+                CREDENTIALS.chmod(0o600)
+            except OSError:
+                pass
+            print(f"\nsigned in — token stored in {CREDENTIALS}")
+            print("try: python scripts/studio.py image --prompt \"a blue circle\" --out out/test")
+            return 0
+        error = token.get("error") or ""
+        if error == "slow_down":
+            interval += 5
+            continue
+        if error in ("authorization_pending", "expired_token"):
+            if error == "expired_token":
+                raise StudioError("the code expired before approval, run login again")
+            continue
+        raise StudioError(f"sign-in failed: {token.get('error_description') or error or token}")
+    raise StudioError("timed out waiting for approval")
+
+
+def cmd_logout(args) -> int:
+    if CREDENTIALS.exists():
+        CREDENTIALS.unlink()
+        print(f"signed out, removed {CREDENTIALS}")
+    else:
+        print("not signed in")
+    return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -359,6 +461,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fallback-script",
                    default="A short introduction to {brief}, read in a calm, confident voice.")
     p.set_defaults(func=cmd_pack)
+
+    p = sub.add_parser("login", help="sign in with Pollinations (device flow, no key to paste)")
+    p.add_argument("--force", action="store_true", help="sign in again even if a token exists")
+    p.set_defaults(func=cmd_login)
+
+    p = sub.add_parser("logout", help="forget the stored sign-in token")
+    p.set_defaults(func=cmd_logout)
     return parser
 
 

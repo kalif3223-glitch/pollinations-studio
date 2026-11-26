@@ -50,18 +50,31 @@ frontmatter the format requires.
 
 ## Authentication
 
-The skill never asks a user to paste a key into a web page. Two supported paths:
+**No key to paste.** Sign in once with the device flow:
 
-- **Server-side key** (what this repository ships): `POLLINATIONS_API_KEY` in the
-  environment, or `--key` on a single call. `scripts/studio.py` reads it in
-  `api_key()` and sends it as `Authorization: Bearer`.
-- **Pollinations sign-in** for apps with a UI: the
-  [`polli-connect`](https://github.com/pollinations/pollinations/blob/main/BRING_YOUR_OWN_POLLEN.md)
-  element lets visitors connect their own balance, so every user spends from
-  their own account. The CLI equivalent is `npx @pollinations/cli auth login`, and
-  `POLLINATIONS_API_KEY` can be filled from it.
+```bash
+python scripts/studio.py login
+```
 
-Nothing else is stored: no key file, no cache of tokens.
+The script prints a code and the address `https://enter.pollinations.ai/device`,
+waits for your approval, then stores the token in
+`~/.config/pollinations/credentials.json` (mode 600). Every later command uses it
+silently. `python scripts/studio.py logout` removes it.
+
+The login uses the public App Key of this skill as the OAuth client id
+(`pk_YxXyBK7lNdUC9mYf`, publishable by design — it carries no secret). Users
+always spend from their own Pollinations balance; nothing is billed to the skill.
+
+For automation (CI, servers) the environment variable stays supported:
+
+```bash
+export POLLINATIONS_API_KEY=sk_...   # optional, takes precedence over the stored token
+```
+
+For web apps, use the
+[`polli-connect`](https://github.com/pollinations/pollinations/blob/main/BRING_YOUR_OWN_POLLEN.md)
+element: it runs the same OAuth flow in the browser and exposes the user's own
+key to your page. App Key, redirect URIs and earnings are described there too.
 ## Use
 
 ```bash
@@ -93,6 +106,8 @@ python scripts/studio.py pack --brief "brand concept for an industrial power pla
 | `image` | generates one or more images | `--prompt`, `--model`, `--size`, `--count`, `--seed`, `--out`, `--json` |
 | `voice` | text to speech | `--text`/`--file`, `--model`, `--voice`, `--out` |
 | `pack` | concept → visuals → voice-over → manifest | `--brief`, `--images`, `--size`, `--no-voice`, `--out` |
+| `login` | sign in with Pollinations, no key to paste | `--force` |
+| `logout` | forget the stored token | — |
 
 Every command prints the paths it wrote, so agents can chain steps without
 parsing JSON. `image --json` also emits machine-readable paths.
@@ -145,6 +160,7 @@ Requests retry on transient failures, and error bodies are surfaced verbatim —
 
   
 MIT — see [LICENSE](LICENSE).
+
 
 
 
