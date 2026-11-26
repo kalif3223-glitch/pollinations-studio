@@ -131,6 +131,19 @@ Requests retry on transient failures, and error bodies are surfaced verbatim —
 
 ## License
 
+### Update — repository populated
+
+- Code: https://github.com/kalif3223-glitch/pollinations-studio/blob/main/scripts/studio.py
+  (stdlib CLI calling /chat/completions, /images/generations, /audio/speech)
+- README with badge, usage and the "Made with pollinations.ai" credit:
+  https://github.com/kalif3223-glitch/pollinations-studio#readme
+- Authentication: POLLINATIONS_API_KEY (server-side key) or polli-connect
+  sign-in for web UIs — documented in README → Authentication
+- Default model IDs: black-forest-labs/flux.1.1-pro (images),
+  openai/gpt-5.4-nano (text), openai/tts-1 (audio) — all paid_only=false
+- Demo screenshot from a real run: docs/demo.png
+
+  
 MIT — see [LICENSE](LICENSE).
 
 
