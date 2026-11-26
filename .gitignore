@@ -5,3 +5,6 @@ __pycache__/
 
 # local secrets
 .env
+
+# sign-in fallback token
+.pollinations-credentials.json

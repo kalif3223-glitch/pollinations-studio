@@ -34,7 +34,21 @@ ISSUER = "https://enter.pollinations.ai"
 # Publishable App Key of this skill. It is a public client id, safe to ship:
 # users sign in to their own account through it, no secret is stored here.
 CLIENT_ID = os.environ.get("POLLINATIONS_CLIENT_ID", "pk_YxXyBK7lNdUC9mYf")
-CREDENTIALS = Path.home() / ".config" / "pollinations" / "credentials.json"
+
+
+def default_credentials_path() -> Path:
+    """Where the sign-in token lives: platform conventions, overridable."""
+    override = os.environ.get("POLLINATIONS_CREDENTIALS")
+    if override:
+        return Path(override).expanduser()
+    if os.name == "nt":
+        base = os.environ.get("APPDATA") or str(Path.home())
+        return Path(base) / "pollinations" / "credentials.json"
+    return Path.home() / ".config" / "pollinations" / "credentials.json"
+
+
+CREDENTIALS = default_credentials_path()
+FALLBACK_CREDENTIALS = Path.cwd() / ".pollinations-credentials.json"
 DEFAULT_TEXT_MODEL = "openai/gpt-5.4-nano"
 DEFAULT_IMAGE_MODEL = "black-forest-labs/flux.1.1-pro"
 DEFAULT_TTS_MODEL = "openai/tts-1"
@@ -53,12 +67,33 @@ class StudioError(RuntimeError):
 
 def stored_token() -> str | None:
     """Read the token saved by `studio.py login` (sk_...), if any."""
+    for path in (CREDENTIALS, FALLBACK_CREDENTIALS):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        token = (data.get("access_token") or "").strip()
+        if token:
+            return token
+    return None
+
+
+def save_token(payload: dict) -> Path:
+    """Persist the token, falling back to the working directory when the
+    default location is not writable (restricted shells, sandboxes, CI)."""
+    blob = json.dumps(payload, indent=2).encode("utf-8")
     try:
-        data = json.loads(CREDENTIALS.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    token = (data.get("access_token") or "").strip()
-    return token or None
+        path = write(CREDENTIALS, blob)
+    except OSError as exc:
+        path = write(FALLBACK_CREDENTIALS, blob)
+        print(f"\nnote: {CREDENTIALS} is not writable ({exc.strerror or exc});")
+        print(f"      the token was stored in {path} for this directory instead.")
+        print("      set POLLINATIONS_CREDENTIALS to choose another path.")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    return path
 
 
 def api_key(explicit: str | None = None) -> str:
@@ -186,12 +221,8 @@ def cmd_login(args) -> int:
                 "client_id": CLIENT_ID,
                 "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             }
-            write(CREDENTIALS, json.dumps(payload, indent=2).encode("utf-8"))
-            try:
-                CREDENTIALS.chmod(0o600)
-            except OSError:
-                pass
-            print(f"\nsigned in — token stored in {CREDENTIALS}")
+            stored_at = save_token(payload)
+            print(f"\nsigned in — token stored in {stored_at}")
             print("try: python scripts/studio.py image --prompt \"a blue circle\" --out out/test")
             return 0
         error = token.get("error") or ""
@@ -487,3 +518,4 @@ def main(argv: list[str]) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv))
+
