@@ -48,6 +48,20 @@ Place the directory where your agent looks for skills (for Claude Code and
 similar: `~/.claude/skills/pollinations-studio`). `SKILL.md` carries the
 frontmatter the format requires.
 
+## Authentication
+
+The skill never asks a user to paste a key into a web page. Two supported paths:
+
+- **Server-side key** (what this repository ships): `POLLINATIONS_API_KEY` in the
+  environment, or `--key` on a single call. `scripts/studio.py` reads it in
+  `api_key()` and sends it as `Authorization: Bearer`.
+- **Pollinations sign-in** for apps with a UI: the
+  [`polli-connect`](https://github.com/pollinations/pollinations/blob/main/BRING_YOUR_OWN_POLLEN.md)
+  element lets visitors connect their own balance, so every user spends from
+  their own account. The CLI equivalent is `npx @pollinations/cli auth login`, and
+  `POLLINATIONS_API_KEY` can be filled from it.
+
+Nothing else is stored: no key file, no cache of tokens.
 ## Use
 
 ```bash
@@ -118,5 +132,6 @@ Requests retry on transient failures, and error bodies are surfaced verbatim —
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
 
 
