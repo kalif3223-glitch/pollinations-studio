@@ -1,5 +1,9 @@
 # Pollinations Studio
 
+[![Made with pollinations.ai](https://raw.githubusercontent.com/pollinations/pollinations/main/packages/ui/src/brand/badge-made-with.svg)](https://pollinations.ai/?ref=badge)
+
+![Pollinations Studio demo](docs/demo.png)
+
 An [Agent Skill](https://agentskills.io) that turns a one-line brief into a
 finished creative package — a written direction, key visuals, a voice-over and a
 manifest — using Pollinations text, image and audio models.
@@ -114,3 +118,5 @@ Requests retry on transient failures, and error bodies are surfaced verbatim —
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+
